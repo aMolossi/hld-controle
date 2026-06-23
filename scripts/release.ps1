@@ -39,18 +39,11 @@ npm run tauri build
 if ($LASTEXITCODE -ne 0) { throw "Build falhou (exit $LASTEXITCODE)" }
 
 $nsisDir = Join-Path $root "src-tauri\target\release\bundle\nsis"
-$base = "HLD Controle_${Version}_x64-setup.exe"
-$setupPath = Join-Path $nsisDir $base
-$sigPath = Join-Path $nsisDir "$base.sig"
-if (-not (Test-Path $setupPath)) { throw "Instalador nao encontrado: $setupPath" }
-if (-not (Test-Path $sigPath)) { throw "Assinatura nao encontrada: $sigPath" }
-
-# Nome de asset sem espacos (evita problemas de URL no GitHub)
-$assetName = "HLD-Controle_${Version}_x64-setup.exe"
+$assetName = "HubControl_${Version}_x64-setup.exe"
 $assetPath = Join-Path $nsisDir $assetName
-$assetSig = Join-Path $nsisDir "$assetName.sig"
-Copy-Item $setupPath $assetPath -Force
-Copy-Item $sigPath $assetSig -Force
+$assetSig  = Join-Path $nsisDir "$assetName.sig"
+if (-not (Test-Path $assetPath)) { throw "Instalador nao encontrado: $assetPath" }
+if (-not (Test-Path $assetSig))  { throw "Assinatura nao encontrada: $assetSig" }
 
 Write-Host "==> Gerando latest.json"
 $signature = (Get-Content $assetSig -Raw).Trim()

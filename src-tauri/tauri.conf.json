@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "HLD Controle",
-  "version": "0.2.0",
-  "identifier": "com.hld.controle",
+  "productName": "HubControl",
+  "version": "0.3.0",
+  "identifier": "com.hubcontrol.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "HLD Controle",
+        "title": "HubControl",
         "width": 1280,
         "height": 832,
         "minWidth": 1024,

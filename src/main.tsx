@@ -5,6 +5,7 @@ import App from "./App";
 import Dashboard from "./pages/Dashboard";
 import Vendas from "./pages/Vendas";
 import Despesas from "./pages/Despesas";
+import Precificacao from "./pages/Precificacao";
 import Config from "./pages/Config";
 import "./theme.css";
 
@@ -17,6 +18,7 @@ const router = createHashRouter([
       { path: "dashboard", element: <Dashboard /> },
       { path: "vendas", element: <Vendas /> },
       { path: "despesas", element: <Despesas /> },
+      { path: "precificacao", element: <Precificacao /> },
       { path: "config", element: <Config /> },
     ],
   },

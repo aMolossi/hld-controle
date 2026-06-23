@@ -4,6 +4,7 @@ import {
   IconDashboard,
   IconCart,
   IconWallet,
+  IconPricing,
   IconGear,
 } from "./components/icons";
 import { autoBackup } from "./lib/backup";
@@ -13,6 +14,7 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: <IconDashboard /> },
   { to: "/vendas", label: "Vendas", icon: <IconCart /> },
   { to: "/despesas", label: "Despesas", icon: <IconWallet /> },
+  { to: "/precificacao", label: "Precificacao", icon: <IconPricing /> },
   { to: "/config", label: "Configuracoes", icon: <IconGear /> },
 ];
 
@@ -48,10 +50,10 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">HLD</div>
+          <div className="brand-mark">HC</div>
           <div className="brand-text">
-            <strong>HLD</strong>
-            <span>Marmitaria</span>
+            <strong>HubControl</strong>
+            <span>Gestao inteligente</span>
           </div>
         </div>
         <nav className="nav">
@@ -66,7 +68,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-foot">v0.2 &middot; dados locais</div>
+        <div className="sidebar-foot">v0.3 &middot; dados locais</div>
       </aside>
       <main className="content">
         {upd && (
