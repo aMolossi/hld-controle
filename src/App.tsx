@@ -14,8 +14,8 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: <IconDashboard /> },
   { to: "/vendas", label: "Vendas", icon: <IconCart /> },
   { to: "/despesas", label: "Despesas", icon: <IconWallet /> },
-  { to: "/precificacao", label: "Precificacao", icon: <IconPricing /> },
-  { to: "/config", label: "Configuracoes", icon: <IconGear /> },
+  { to: "/precificacao", label: "Precificação", icon: <IconPricing /> },
+  { to: "/config", label: "Configurações", icon: <IconGear /> },
 ];
 
 export default function App() {
@@ -41,7 +41,7 @@ export default function App() {
       await downloadAndInstall(upd, setPct);
     } catch (e) {
       console.error(e);
-      alert("Nao foi possivel atualizar agora. Tente novamente mais tarde.");
+      alert("Não foi possível atualizar agora. Tente novamente mais tarde.");
       setInstalling(false);
     }
   };
@@ -53,7 +53,7 @@ export default function App() {
           <div className="brand-mark">HC</div>
           <div className="brand-text">
             <strong>HubControl</strong>
-            <span>Gestao inteligente</span>
+            <span>Gestão inteligente</span>
           </div>
         </div>
         <nav className="nav">

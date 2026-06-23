@@ -4,6 +4,7 @@ import type { DespesaCategoria, Produto } from "../lib/types";
 import { exec, query } from "../lib/db";
 import { formatBRL, formatPct } from "../lib/format";
 import { IconPlus, IconTrash } from "../components/icons";
+import { useConfirm } from "../components/Confirm";
 import {
   appDataPath,
   exportBackup,
@@ -20,6 +21,7 @@ export default function Config() {
   const [novaCat, setNovaCat] = useState("");
   const [novaCatTipo, setNovaCatTipo] = useState("variavel");
   const [msg, setMsg] = useState("");
+  const { ask, ConfirmDialog } = useConfirm();
 
   // backup + updates
   const [appVersion, setAppVersion] = useState("");
@@ -59,7 +61,7 @@ export default function Config() {
     for (const p of produtos) {
       await exec("UPDATE produtos SET preco=?, custo=? WHERE id=?", [p.preco, p.custo, p.id]);
     }
-    flash("Precos e custos salvos.");
+    flash("Preços e custos salvos.");
   };
 
   const salvarMargem = async () => {
@@ -82,7 +84,7 @@ export default function Config() {
   };
 
   const delCat = async (c: DespesaCategoria) => {
-    if (!confirm(`Remover a categoria "${c.nome}"? Despesas ja lancadas nao sao apagadas.`)) return;
+    if (!(await ask(`Remover a categoria "${c.nome}"? Despesas já lançadas não são apagadas.`))) return;
     await exec("DELETE FROM despesa_categorias WHERE id=?", [c.id]);
     await loadAll();
   };
@@ -100,7 +102,7 @@ export default function Config() {
   const doRestore = async () => {
     try {
       const ok = await restoreBackup();
-      if (ok && confirm("Backup selecionado. O app vai reiniciar para restaurar os dados. Continuar?")) {
+      if (ok && (await ask("Backup selecionado. O app vai reiniciar para restaurar os dados. Continuar?"))) {
         await relaunchApp();
       }
     } catch (e) {
@@ -116,12 +118,12 @@ export default function Config() {
       const u = await checkUpdate();
       if (u) {
         setUpd(u);
-        setUpdMsg(`Nova versao ${u.version} disponivel.`);
+        setUpdMsg(`Nova versão ${u.version} disponível.`);
       } else {
-        setUpdMsg("Voce esta na versao mais recente.");
+        setUpdMsg("Você está na versão mais recente.");
       }
     } catch {
-      setUpdMsg("Nao foi possivel verificar agora (sem internet ou ainda sem releases publicadas).");
+      setUpdMsg("Não foi possível verificar agora (sem internet ou ainda sem releases publicadas).");
     } finally {
       setCheckingUpd(false);
     }
@@ -133,41 +135,42 @@ export default function Config() {
     try {
       await downloadAndInstall(upd, setPct);
     } catch (e) {
-      alert("Falha ao instalar atualizacao: " + e);
+      alert("Falha ao instalar atualização: " + e);
       setInstalling(false);
     }
   };
 
   return (
     <>
+      {ConfirmDialog}
       <div className="page-head">
         <div>
-          <div className="page-title">Configuracoes</div>
-          <div className="page-sub">Precos, custos, categorias, backup e atualizacoes</div>
+          <div className="page-title">Configurações</div>
+          <div className="page-sub">Preços, custos, categorias, backup e atualizações</div>
         </div>
         {msg && <div className="pill pill-novo">{msg}</div>}
       </div>
 
       <div className="card">
         <div className="card-head">
-          <span className="card-title">Precos e custos das marmitas</span>
+          <span className="card-title">Preços e custos das marmitas</span>
           <button className="btn btn-primary btn-sm" onClick={salvarProdutos}>
-            Salvar precos
+            Salvar preços
           </button>
         </div>
         <div className="field-hint" style={{ marginBottom: 14 }}>
-          O <strong>custo unitario</strong> (ingredientes + embalagem por marmita) alimenta o
-          calculo de margem e o preco sugerido. O preco sugerido usa a margem-meta abaixo.
+          O <strong>custo unitário</strong> (ingredientes + embalagem por marmita) alimenta o
+          cálculo de margem e o preço sugerido. O preço sugerido usa a margem-meta abaixo.
         </div>
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th>Marmita</th>
-                <th className="t-right">Preco de venda</th>
-                <th className="t-right">Custo unitario</th>
+                <th className="t-right">Preço de venda</th>
+                <th className="t-right">Custo unitário</th>
                 <th className="t-right">Margem atual</th>
-                <th className="t-right">Preco sugerido</th>
+                <th className="t-right">Preço sugerido</th>
               </tr>
             </thead>
             <tbody>
@@ -223,7 +226,7 @@ export default function Config() {
             </button>
           </div>
           <div className="field-hint" style={{ marginBottom: 12 }}>
-            Margem de lucro desejada sobre o preco de venda. Usada para sugerir o preco ideal de
+            Margem de lucro desejada sobre o preço de venda. Usada para sugerir o preço ideal de
             cada marmita conforme o custo.
           </div>
           <div className="field" style={{ maxWidth: 160 }}>
@@ -258,7 +261,7 @@ export default function Config() {
               value={novaCatTipo}
               onChange={(e) => setNovaCatTipo(e.target.value)}
             >
-              <option value="variavel">Variavel</option>
+              <option value="variavel">Variável</option>
               <option value="fixo">Fixo</option>
             </select>
             <button className="btn btn-primary btn-sm" onClick={addCat}>
@@ -293,8 +296,8 @@ export default function Config() {
             <span className="card-title">Backup de dados</span>
           </div>
           <div className="field-hint" style={{ marginBottom: 12 }}>
-            Backup automatico a cada abertura (mantem os 15 mais recentes). Exporte para uma pasta
-            do Google Drive/OneDrive para ter copia fora do PC.
+            Backup automático a cada abertura (mantém os 15 mais recentes). Exporte para uma pasta
+            do Google Drive/OneDrive para ter cópia fora do PC.
           </div>
           <div className="row" style={{ gap: 10, marginBottom: 12 }}>
             <button className="btn btn-primary btn-sm" onClick={doExport}>
@@ -325,15 +328,15 @@ export default function Config() {
 
         <div className="card">
           <div className="card-head">
-            <span className="card-title">Atualizacoes</span>
+            <span className="card-title">Atualizações</span>
           </div>
           <div className="field-hint" style={{ marginBottom: 12 }}>
-            Versao atual: <strong className="gold">{appVersion || "..."}</strong>. O app verifica
-            atualizacoes automaticamente ao abrir.
+            Versão atual: <strong className="gold">{appVersion || "..."}</strong>. O app verifica
+            atualizações automaticamente ao abrir.
           </div>
           <div className="row" style={{ gap: 10 }}>
             <button className="btn btn-sm" onClick={doCheck} disabled={checkingUpd}>
-              {checkingUpd ? "Verificando..." : "Verificar atualizacoes"}
+              {checkingUpd ? "Verificando..." : "Verificar atualizações"}
             </button>
             {upd && (
               <button className="btn btn-primary btn-sm" onClick={doInstall} disabled={installing}>

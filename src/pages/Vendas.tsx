@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Produto, Venda, VendaExtra, VendaItem } from "../lib/types";
 import { BAIRROS, ORIGENS, PERIODICIDADES, TIPOS_CLIENTE, TIPOS_VENDA } from "../lib/types";
 import { exec, query } from "../lib/db";
@@ -9,6 +9,7 @@ import PeriodFilter from "../components/PeriodFilter";
 import type { Preset } from "../components/PeriodFilter";
 import Modal from "../components/Modal";
 import { IconEdit, IconPlus, IconTrash } from "../components/icons";
+import { useConfirm } from "../components/Confirm";
 
 interface ItemInput {
   tamanho: string;
@@ -76,6 +77,8 @@ export default function Vendas() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm([]));
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const { ask, ConfirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     const rows = await query<Venda>(
@@ -266,15 +269,27 @@ export default function Vendas() {
   };
 
   const remove = async (v: Venda) => {
-    if (!confirm(`Excluir a venda de ${formatDateBR(v.data)} (${formatBRL(v.total)})?`)) return;
+    if (!(await ask(`Excluir a venda de ${formatDateBR(v.data)} (${formatBRL(v.total)})?`))) return;
     await exec("DELETE FROM venda_itens WHERE venda_id=?", [v.id]);
     await exec("DELETE FROM venda_extras WHERE venda_id=?", [v.id]);
     await exec("DELETE FROM vendas WHERE id=?", [v.id]);
     await load();
   };
 
-  const totalPeriodo = vendas.reduce((s, v) => s + v.total, 0);
-  const marmitasPeriodo = vendas.reduce((s, v) => s + (v.qtd_marmitas || 0), 0);
+  const filteredVendas = useMemo(() => {
+    if (!search.trim()) return vendas;
+    const q = search.toLowerCase();
+    return vendas.filter(
+      (v) =>
+        (v.cliente_nome ?? "").toLowerCase().includes(q) ||
+        (v.empresa ?? "").toLowerCase().includes(q) ||
+        (v.bairro ?? "").toLowerCase().includes(q) ||
+        (v.origem ?? "").toLowerCase().includes(q),
+    );
+  }, [vendas, search]);
+
+  const totalPeriodo = filteredVendas.reduce((s, v) => s + v.total, 0);
+  const marmitasPeriodo = filteredVendas.reduce((s, v) => s + (v.qtd_marmitas || 0), 0);
   const isEmpresa = form.tipo_venda === "Empresa";
 
   return (
@@ -283,6 +298,7 @@ export default function Vendas() {
         <div>
           <div className="page-title">Vendas</div>
           <div className="page-sub">Pedidos avulsos e de empresas (contrato)</div>
+
         </div>
         <button className="btn btn-primary" onClick={openNew}>
           <IconPlus /> Nova venda
@@ -298,17 +314,23 @@ export default function Vendas() {
             setPreset(pr);
           }}
         />
+        <input
+          className="search-input"
+          placeholder="Buscar cliente, empresa, bairro..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <div className="spacer" />
         <div className="muted">
-          {vendas.length} pedido(s) &middot; {marmitasPeriodo} marmita(s) &middot;{" "}
+          {filteredVendas.length} pedido(s) &middot; {marmitasPeriodo} marmita(s) &middot;{" "}
           <strong className="gold">{formatBRL(totalPeriodo)}</strong>
         </div>
       </div>
 
       {vendas.length === 0 ? (
         <div className="card empty">
-          <strong>Nenhuma venda no periodo</strong>
-          Clique em "Nova venda" para lancar o primeiro pedido.
+          <strong>Nenhuma venda no período</strong>
+          Clique em "Nova venda" para lançar o primeiro pedido.
         </div>
       ) : (
         <div className="table-wrap">
@@ -325,7 +347,7 @@ export default function Vendas() {
               </tr>
             </thead>
             <tbody>
-              {vendas.map((v) => (
+              {filteredVendas.map((v) => (
                 <tr key={v.id}>
                   <td className="nowrap">{formatDateBR(v.data)}</td>
                   <td>
@@ -371,6 +393,8 @@ export default function Vendas() {
           </table>
         </div>
       )}
+
+      {ConfirmDialog}
 
       {open && (
         <Modal

@@ -251,32 +251,18 @@ a {
 .kpi {
   background: var(--surface);
   border: 1px solid var(--line-soft);
+  border-top: 2px solid var(--line);
   border-radius: var(--radius);
   padding: 16px 18px;
-  position: relative;
-  overflow: hidden;
 }
-.kpi::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--gold-deep);
-  opacity: 0.5;
+.kpi.gold {
+  border-top-color: var(--gold);
 }
-.kpi.gold::before {
-  background: linear-gradient(var(--gold-bright), var(--gold));
-  opacity: 1;
+.kpi.good {
+  border-top-color: var(--green);
 }
-.kpi.good::before {
-  background: var(--green);
-  opacity: 1;
-}
-.kpi.bad::before {
-  background: var(--red);
-  opacity: 1;
+.kpi.bad {
+  border-top-color: var(--red);
 }
 .kpi-label {
   font-size: 12px;
@@ -742,9 +728,56 @@ table.table tbody tr:hover {
   background: rgba(246, 235, 215, 0.03);
 }
 
+/* ---------- Search input ---------- */
+.search-input {
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  min-width: 220px;
+}
+.search-input::placeholder {
+  color: var(--text-faint);
+}
+.search-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(207, 171, 88, 0.12);
+}
+
+/* ---------- Skeleton loading ---------- */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-color: var(--line-soft) !important;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @media (max-width: 1080px) {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton {
+    background: var(--surface-2);
   }
 }

@@ -80,18 +80,18 @@ export default function Precificacao() {
     <>
       <div className="page-head">
         <div>
-          <div className="page-title">Precificacao</div>
+          <div className="page-title">Precificação</div>
           <div className="page-sub">
-            Ponto de equilibrio, simulacao de volume e sensibilidade de preco
+            Ponto de equilíbrio, simulação de volume e sensibilidade de preço
           </div>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
-          <span className="card-title">Parametros</span>
+          <span className="card-title">Parâmetros</span>
           <span className="field-hint">
-            Pre-preenchido com dados atuais — ajuste conforme necessario
+            Pré-preenchido com dados atuais — ajuste conforme necessário
           </span>
         </div>
         <div className="form-grid">
@@ -109,7 +109,7 @@ export default function Precificacao() {
             </span>
           </div>
           <div className="field">
-            <label>Custo variavel por marmita (R$)</label>
+            <label>Custo variável por marmita (R$)</label>
             <input
               type="number"
               step="0.5"
@@ -117,7 +117,7 @@ export default function Precificacao() {
               value={custoVar}
               onChange={(e) => setCustoVar(e.target.value)}
             />
-            <span className="field-hint">Ingredientes + embalagem (media)</span>
+            <span className="field-hint">Ingredientes + embalagem (média)</span>
           </div>
           <div className="field">
             <label>Preco medio por marmita (R$)</label>
@@ -128,10 +128,10 @@ export default function Precificacao() {
               value={precoMedio}
               onChange={(e) => setPrecoMedio(e.target.value)}
             />
-            <span className="field-hint">Media ponderada P/M/G</span>
+            <span className="field-hint">Média ponderada P/M/G</span>
           </div>
           <div className="field">
-            <label>Volume medio diario (marmitas/dia)</label>
+            <label>Volume médio diário (marmitas/dia)</label>
             <input
               type="number"
               step="5"
@@ -139,34 +139,34 @@ export default function Precificacao() {
               value={volDia}
               onChange={(e) => setVolDia(e.target.value)}
             />
-            <span className="field-hint">Vendas medias por dia ({DIAS} dias uteis/mes)</span>
+            <span className="field-hint">Vendas médias por dia ({DIAS} dias úteis/mês)</span>
           </div>
         </div>
       </div>
 
       <div className="kpi-grid">
         <div className={"kpi " + (mc > 0 ? "gold" : mc < 0 ? "bad" : "")}>
-          <div className="kpi-label">Margem de contribuicao</div>
+          <div className="kpi-label">Margem de contribuição</div>
           <div className="kpi-value">{pm > 0 ? formatBRL(mc) : "—"}</div>
           <div className="kpi-sub">
             {pm > 0
-              ? formatPct(mcPct) + " sobre o preco de venda"
-              : "Informe preco e custo"}
+              ? formatPct(mcPct) + " sobre o preço de venda"
+              : "Informe preço e custo"}
           </div>
         </div>
 
         <div className="kpi">
-          <div className="kpi-label">Ponto de equilibrio</div>
+          <div className="kpi-label">Ponto de equilíbrio</div>
           <div className="kpi-value">
             {peqDia > 0 ? Math.ceil(peqDia) + " /dia" : "—"}
           </div>
           <div className="kpi-sub">
             {peqMes > 0
-              ? Math.ceil(peqMes) + " marmitas/mes · " + DIAS + " dias uteis"
+              ? Math.ceil(peqMes) + " marmitas/mês · " + DIAS + " dias úteis"
               : cf === 0
               ? "Informe o custo fixo mensal"
               : mc <= 0
-              ? "Custo variavel >= preco — impossivel"
+              ? "Custo variável ≥ preço — impossível"
               : "—"}
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function Precificacao() {
                 " margem · " +
                 Math.round(vd) +
                 " marm/dia"
-              : "Informe os parametros"}
+              : "Informe os parâmetros"}
           </div>
         </div>
 
@@ -195,7 +195,7 @@ export default function Precificacao() {
             "kpi " + (folga > 0 ? "good" : folga < 0 ? "bad" : "")
           }
         >
-          <div className="kpi-label">Folga sobre equilibrio</div>
+          <div className="kpi-label">Folga sobre equilíbrio</div>
           <div
             className={
               "kpi-value " +
@@ -209,8 +209,8 @@ export default function Precificacao() {
           <div className="kpi-sub">
             {peqDia > 0
               ? folga >= 0
-                ? "Acima do equilibrio"
-                : "Abaixo do equilibrio — prejuizo"
+                ? "Acima do equilíbrio"
+                : "Abaixo do equilíbrio — prejuízo"
               : ""}
           </div>
         </div>
@@ -218,9 +218,9 @@ export default function Precificacao() {
 
       <div className="card section-gap">
         <div className="card-head">
-          <span className="card-title">Simulacao de volume</span>
+          <span className="card-title">Simulação de volume</span>
           <span className="field-hint">
-            Resultado projetado para diferentes volumes diarios ({DIAS} dias/mes)
+            Resultado projetado para diferentes volumes diários ({DIAS} dias/mês)
           </span>
         </div>
         <div className="table-wrap">
@@ -322,9 +322,9 @@ export default function Precificacao() {
 
       <div className="card section-gap">
         <div className="card-head">
-          <span className="card-title">Sensibilidade de preco</span>
+          <span className="card-title">Sensibilidade de preço</span>
           <span className="field-hint">
-            Impacto de variacoes no preco medio com volume fixo de{" "}
+            Impacto de variações no preço médio com volume fixo de{" "}
             {Math.round(vd)} marmitas/dia
           </span>
         </div>

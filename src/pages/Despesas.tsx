@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Despesa, DespesaCategoria } from "../lib/types";
 import { exec, query } from "../lib/db";
 import { formatBRL, formatDateBR } from "../lib/format";
@@ -8,6 +8,7 @@ import PeriodFilter from "../components/PeriodFilter";
 import type { Preset } from "../components/PeriodFilter";
 import Modal from "../components/Modal";
 import { IconEdit, IconPlus, IconTrash } from "../components/icons";
+import { useConfirm } from "../components/Confirm";
 
 interface FormState {
   id: number | null;
@@ -39,6 +40,8 @@ export default function Despesas() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm([]));
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const { ask, ConfirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     const rows = await query<Despesa>(
@@ -109,19 +112,29 @@ export default function Despesas() {
   };
 
   const remove = async (d: Despesa) => {
-    if (!confirm(`Excluir a despesa "${d.categoria}" de ${formatBRL(d.valor)}?`)) return;
+    if (!(await ask(`Excluir a despesa "${d.categoria}" de ${formatBRL(d.valor)}?`))) return;
     await exec("DELETE FROM despesas WHERE id=?", [d.id]);
     await load();
   };
 
-  const total = despesas.reduce((s, d) => s + d.valor, 0);
+  const filteredDespesas = useMemo(() => {
+    if (!search.trim()) return despesas;
+    const q = search.toLowerCase();
+    return despesas.filter(
+      (d) =>
+        d.categoria.toLowerCase().includes(q) ||
+        (d.descricao ?? "").toLowerCase().includes(q),
+    );
+  }, [despesas, search]);
+
+  const total = filteredDespesas.reduce((s, d) => s + d.valor, 0);
 
   return (
     <>
       <div className="page-head">
         <div>
           <div className="page-title">Despesas</div>
-          <div className="page-sub">Saidas, custos, taxas e investimentos</div>
+          <div className="page-sub">Saídas, custos, taxas e investimentos</div>
         </div>
         <button className="btn btn-primary" onClick={openNew}>
           <IconPlus /> Nova despesa
@@ -137,17 +150,23 @@ export default function Despesas() {
             setPreset(pr);
           }}
         />
+        <input
+          className="search-input"
+          placeholder="Buscar categoria, descrição..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <div className="spacer" />
         <div className="muted">
-          {despesas.length} lancamento(s) &middot;{" "}
+          {filteredDespesas.length} lançamento(s) &middot;{" "}
           <strong className="neg">{formatBRL(total)}</strong>
         </div>
       </div>
 
       {despesas.length === 0 ? (
         <div className="card empty">
-          <strong>Nenhuma despesa no periodo</strong>
-          Lance custos, taxas, salarios, energia, marketing, perdas etc.
+          <strong>Nenhuma despesa no período</strong>
+          Lance custos, taxas, salários, energia, marketing, perdas etc.
         </div>
       ) : (
         <div className="table-wrap">
@@ -163,7 +182,7 @@ export default function Despesas() {
               </tr>
             </thead>
             <tbody>
-              {despesas.map((d) => (
+              {filteredDespesas.map((d) => (
                 <tr key={d.id}>
                   <td className="nowrap">{formatDateBR(d.data)}</td>
                   <td>
@@ -173,7 +192,7 @@ export default function Despesas() {
                   <td>{d.descricao || <span className="muted">-</span>}</td>
                   <td>
                     <span className={"pill " + (d.tipo === "fixo" ? "pill-fixo" : "pill-var")}>
-                      {d.tipo === "fixo" ? "Fixo" : "Variavel"}
+                      {d.tipo === "fixo" ? "Fixo" : "Variável"}
                     </span>
                   </td>
                   <td className="t-right neg">
@@ -195,6 +214,8 @@ export default function Despesas() {
           </table>
         </div>
       )}
+
+      {ConfirmDialog}
 
       {open && (
         <Modal
@@ -243,7 +264,7 @@ export default function Despesas() {
             <div className="field">
               <label>Tipo</label>
               <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-                <option value="variavel">Variavel</option>
+                <option value="variavel">Variável</option>
                 <option value="fixo">Fixo</option>
               </select>
             </div>

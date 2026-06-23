@@ -100,7 +100,7 @@ export default function Dashboard() {
       <div className="page-head">
         <div>
           <div className="page-title">Dashboard</div>
-          <div className="page-sub">Visao geral do periodo selecionado</div>
+          <div className="page-sub">Visão geral do período selecionado</div>
         </div>
         <PeriodFilter
           period={period}
@@ -112,7 +112,15 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="kpi-grid">
+      {resumo === null ? (
+        <div className="kpi-grid">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="kpi skeleton" style={{ minHeight: 88 }} />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="kpi-grid" style={resumo === null ? { display: "none" } : undefined}>
         <KpiCard
           variant="gold"
           label="Faturamento"
