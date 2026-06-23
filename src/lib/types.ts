@@ -7,6 +7,7 @@ export interface Produto {
   preco: number;
   custo: number;
   ativo: number;
+  disponivel_hoje: number;
   ordem: number;
 }
 
@@ -28,8 +29,15 @@ export interface Venda {
   qtd_marmitas: number;
   itens_resumo: string | null;
   obs: string | null;
+  forma_pagamento: string; // "PIX" | "Dinheiro" | "Cartão" | "Fiado"
+  status_pagamento: string; // "pago" | "pendente"
+  status_entrega: string; // "pendente" | "entregue"
+  hora_pedido: string | null; // "HH:MM"
+  cliente_id: number | null;
   criado_em: string;
 }
+
+export const FORMAS_PAGAMENTO = ["PIX", "Dinheiro", "Cartão", "Fiado"] as const;
 
 export interface VendaItem {
   id: number;
@@ -65,6 +73,16 @@ export interface DespesaCategoria {
   nome: string;
   tipo: string;
   ordem: number;
+}
+
+export interface Cliente {
+  id: number;
+  nome: string;
+  telefone: string | null;
+  bairro: string | null;
+  origem: string | null;
+  obs: string | null;
+  criado_em: string;
 }
 
 export interface Lead {

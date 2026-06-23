@@ -1,5 +1,64 @@
+use base64::Engine;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+type HmacSha256 = Hmac<Sha256>;
+
+// Chave secreta usada para assinar as licenças.
+// Altere antes de distribuir builds para clientes diferentes.
+const LICENSE_SECRET: &[u8] = b"hubcontrol-license-key-2024-hld";
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct LicensePayload {
+    c: String, // cliente
+    e: String, // expiry YYYY-MM-DD
+    t: String, // tier: starter | pro
+}
+
+/// Valida a assinatura HMAC-SHA256 de uma chave de licença e devolve o payload decodificado.
+/// Formato: HUBCTRL-<base64url_payload>.<base64url_sig>
+/// Não verifica data de expiração — isso é responsabilidade do frontend.
+#[tauri::command]
+fn activate_license(key: String) -> Result<serde_json::Value, String> {
+    let rest = key
+        .trim()
+        .strip_prefix("HUBCTRL-")
+        .ok_or("Chave inválida: prefixo incorreto")?;
+
+    let dot = rest
+        .rfind('.')
+        .ok_or("Chave inválida: formato incorreto (falta separador)")?;
+    let payload_b64 = &rest[..dot];
+    let sig_b64 = &rest[dot + 1..];
+
+    // Verificar HMAC sobre o payload em base64url
+    let mut mac =
+        HmacSha256::new_from_slice(LICENSE_SECRET).map_err(|e| e.to_string())?;
+    mac.update(payload_b64.as_bytes());
+
+    let sig_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(sig_b64)
+        .map_err(|_| "Chave inválida: assinatura corrompida")?;
+
+    mac.verify_slice(&sig_bytes)
+        .map_err(|_| "Chave inválida: assinatura não confere. Verifique a chave e tente novamente.")?;
+
+    // Decodificar payload
+    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .map_err(|_| "Chave inválida: payload corrompido")?;
+
+    let payload: LicensePayload = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| "Chave inválida: dados do payload corrompidos")?;
+
+    Ok(serde_json::json!({
+        "cliente": payload.c,
+        "expiry": payload.e,
+        "tier": payload.t,
+    }))
+}
 
 /// Caminho da pasta de dados do app (onde fica o hld.db).
 #[tauri::command]
@@ -97,6 +156,30 @@ pub fn run() {
             sql: include_str!("../migrations/002_multi_itens.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "rastreamento de pagamento por venda",
+            sql: include_str!("../migrations/003_pagamento.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "status de entrega e hora do pedido",
+            sql: include_str!("../migrations/004_entrega.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "cadastro de clientes e vinculo com vendas",
+            sql: include_str!("../migrations/005_clientes.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "cardapio dinamico — disponivel_hoje em produtos",
+            sql: include_str!("../migrations/006_produtos.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -114,7 +197,8 @@ pub fn run() {
             prepare_backup_path,
             list_backups,
             prune_backups,
-            restore_backup
+            restore_backup,
+            activate_license
         ])
         .setup(|app| {
             // Restauracao pendente: troca o banco antes de qualquer conexao.

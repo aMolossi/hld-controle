@@ -5,6 +5,7 @@ import { exec, query } from "../lib/db";
 import { formatBRL, formatPct } from "../lib/format";
 import { IconPlus, IconTrash } from "../components/icons";
 import { useConfirm } from "../components/Confirm";
+import Modal from "../components/Modal";
 import {
   appDataPath,
   exportBackup,
@@ -13,11 +14,14 @@ import {
   restoreBackup,
 } from "../lib/backup";
 import { checkUpdate, downloadAndInstall, type Update } from "../lib/update";
+import { readLicenseInfo } from "../lib/license";
+import type { LicenseInfo } from "../lib/license";
 
 export default function Config() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [cats, setCats] = useState<DespesaCategoria[]>([]);
   const [margem, setMargem] = useState("30");
+  const [fiadoThreshold, setFiadoThreshold] = useState("200");
   const [novaCat, setNovaCat] = useState("");
   const [novaCatTipo, setNovaCatTipo] = useState("variavel");
   const [msg, setMsg] = useState("");
@@ -32,12 +36,17 @@ export default function Config() {
   const [updMsg, setUpdMsg] = useState("");
   const [installing, setInstalling] = useState(false);
   const [pct, setPct] = useState(0);
+  const [novoProdOpen, setNovoProdOpen] = useState(false);
+  const [novoProd, setNovoProd] = useState({ nome: "", tamanho: "", preco: "", custo: "" });
+  const [licInfo, setLicInfo] = useState<LicenseInfo | null>(null);
 
   const loadAll = async () => {
-    setProdutos(await query<Produto>("SELECT * FROM produtos ORDER BY ordem"));
+    setProdutos(await query<Produto>("SELECT * FROM produtos WHERE ativo = 1 ORDER BY ordem"));
     setCats(await query<DespesaCategoria>("SELECT * FROM despesa_categorias ORDER BY ordem, nome"));
     const m = await query<{ valor: string }>("SELECT valor FROM config WHERE chave='margem_meta'");
     if (m[0]) setMargem(String(Math.round((parseFloat(m[0].valor) || 0) * 100)));
+    const ft = await query<{ valor: string }>("SELECT valor FROM config WHERE chave='alerta_fiado_threshold'");
+    if (ft[0]) setFiadoThreshold(ft[0].valor);
   };
 
   useEffect(() => {
@@ -45,6 +54,7 @@ export default function Config() {
     getVersion().then(setAppVersion).catch(() => {});
     listBackups().then(setBackups);
     appDataPath().then(setDataDir);
+    readLicenseInfo().then(setLicInfo);
   }, []);
 
   const flash = (s: string) => {
@@ -64,12 +74,59 @@ export default function Config() {
     flash("Preços e custos salvos.");
   };
 
+  const toggleDisponivel = async (id: number, val: number) => {
+    await exec("UPDATE produtos SET disponivel_hoje=? WHERE id=?", [val, id]);
+    setProdutos((ps) => ps.map((p) => (p.id === id ? { ...p, disponivel_hoje: val } : p)));
+  };
+
+  const reordenar = async (idx: number, dir: -1 | 1) => {
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= produtos.length) return;
+    const a = produtos[idx], b = produtos[swapIdx];
+    await exec("UPDATE produtos SET ordem=? WHERE id=?", [b.ordem, a.id]);
+    await exec("UPDATE produtos SET ordem=? WHERE id=?", [a.ordem, b.id]);
+    await loadAll();
+  };
+
+  const desativarProd = async (p: Produto) => {
+    if (!(await ask(`Desativar "${p.nome} (${p.tamanho})"? O histórico de vendas não é afetado.`))) return;
+    await exec("UPDATE produtos SET ativo=0 WHERE id=?", [p.id]);
+    await loadAll();
+  };
+
+  const salvarNovoProd = async () => {
+    const nome = novoProd.nome.trim();
+    const tamanho = novoProd.tamanho.trim();
+    if (!nome || !tamanho) return;
+    if (produtos.length >= 20) {
+      flash("Máximo de 20 produtos ativos atingido.");
+      setNovoProdOpen(false);
+      return;
+    }
+    const maxOrdem = Math.max(0, ...produtos.map((p) => p.ordem));
+    await exec(
+      "INSERT INTO produtos (tamanho, nome, preco, custo, ativo, disponivel_hoje, ordem) VALUES (?,?,?,?,1,1,?)",
+      [tamanho, nome, parseFloat(novoProd.preco) || 0, parseFloat(novoProd.custo) || 0, maxOrdem + 1],
+    );
+    setNovoProdOpen(false);
+    setNovoProd({ nome: "", tamanho: "", preco: "", custo: "" });
+    await loadAll();
+  };
+
   const salvarMargem = async () => {
     await exec(
       "INSERT INTO config (chave,valor) VALUES ('margem_meta',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
       [String(margemFrac)],
     );
     flash("Margem-meta salva.");
+  };
+
+  const salvarAlertas = async () => {
+    await exec(
+      "INSERT INTO config (chave,valor) VALUES ('alerta_fiado_threshold',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
+      [fiadoThreshold],
+    );
+    flash("Configurações de alertas salvas.");
   };
 
   const addCat = async () => {
@@ -153,14 +210,21 @@ export default function Config() {
 
       <div className="card">
         <div className="card-head">
-          <span className="card-title">Preços e custos das marmitas</span>
-          <button className="btn btn-primary btn-sm" onClick={salvarProdutos}>
-            Salvar preços
-          </button>
+          <span className="card-title">Cardápio de produtos</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn btn-sm" onClick={() => setNovoProdOpen(true)}>
+              <IconPlus /> Novo produto
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={salvarProdutos}>
+              Salvar preços
+            </button>
+          </div>
         </div>
         <div className="field-hint" style={{ marginBottom: 14 }}>
           O <strong>custo unitário</strong> (ingredientes + embalagem por marmita) alimenta o
           cálculo de margem e o preço sugerido. O preço sugerido usa a margem-meta abaixo.
+          Use <strong>Hoje</strong> para ativar/desativar um produto no formulário de vendas do dia.
+          Produtos desativados (ícone lixo) não aparecem mais.
         </div>
         <div className="table-wrap">
           <table className="table">
@@ -171,10 +235,12 @@ export default function Config() {
                 <th className="t-right">Custo unitário</th>
                 <th className="t-right">Margem atual</th>
                 <th className="t-right">Preço sugerido</th>
+                <th className="t-center">Hoje</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {produtos.map((p) => {
+              {produtos.map((p, idx) => {
                 const margemAtual = p.preco > 0 ? (p.preco - p.custo) / p.preco : 0;
                 const sugerido = margemFrac < 1 && p.custo > 0 ? p.custo / (1 - margemFrac) : 0;
                 const baixa = p.custo > 0 && margemAtual < margemFrac;
@@ -208,6 +274,35 @@ export default function Config() {
                     </td>
                     <td className="t-right gold">
                       {sugerido > 0 ? formatBRL(sugerido) : <span className="muted">-</span>}
+                    </td>
+                    <td className="t-center">
+                      <input
+                        type="checkbox"
+                        checked={!!p.disponivel_hoje}
+                        onChange={(e) => toggleDisponivel(p.id, e.target.checked ? 1 : 0)}
+                        title="Disponível hoje"
+                      />
+                    </td>
+                    <td>
+                      <div className="row" style={{ gap: 2, justifyContent: "flex-end" }}>
+                        <button
+                          className="btn btn-icon btn-ghost"
+                          onClick={() => reordenar(idx, -1)}
+                          disabled={idx === 0}
+                          title="Subir"
+                        >↑</button>
+                        <button
+                          className="btn btn-icon btn-ghost"
+                          onClick={() => reordenar(idx, 1)}
+                          disabled={idx === produtos.length - 1}
+                          title="Descer"
+                        >↓</button>
+                        <button
+                          className="btn btn-icon btn-ghost"
+                          onClick={() => desativarProd(p)}
+                          title="Desativar produto"
+                        ><IconTrash size={13} /></button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -293,6 +388,32 @@ export default function Config() {
       <div className="grid-2 section-gap">
         <div className="card">
           <div className="card-head">
+            <span className="card-title">Alertas do Dashboard</span>
+            <button className="btn btn-primary btn-sm" onClick={salvarAlertas}>
+              Salvar
+            </button>
+          </div>
+          <div className="field-hint" style={{ marginBottom: 14 }}>
+            O Dashboard exibe avisos automáticos quando algo merece atenção. Configure os
+            limiares abaixo para ajustar a sensibilidade.
+          </div>
+          <div className="field" style={{ maxWidth: 220 }}>
+            <label>Limite de fiados para alerta (R$)</label>
+            <input
+              type="number"
+              step="50"
+              min="0"
+              value={fiadoThreshold}
+              onChange={(e) => setFiadoThreshold(e.target.value)}
+            />
+            <span className="field-hint">
+              Alerta dispara quando o total de vendas fiadas pendentes superar este valor.
+            </span>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
             <span className="card-title">Backup de dados</span>
           </div>
           <div className="field-hint" style={{ marginBottom: 12 }}>
@@ -351,6 +472,95 @@ export default function Config() {
           )}
         </div>
       </div>
+
+      {licInfo && (
+        <div className="card section-gap">
+          <div className="card-head">
+            <span className="card-title">Licença</span>
+            <span className={`pill ${licInfo.inGrace ? "pill-pendente" : licInfo.daysRemaining < 30 ? "pill-pendente" : "pill-pago"}`}>
+              {licInfo.inGrace
+                ? "Carência"
+                : licInfo.daysRemaining < 0
+                ? "Expirada"
+                : licInfo.tier === "pro" ? "Pro" : "Starter"}
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 8 }}>
+            <div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Cliente</div>
+              <div style={{ fontWeight: 600 }}>{licInfo.cliente}</div>
+            </div>
+            <div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Válida até</div>
+              <div style={{ fontWeight: 600 }}>{licInfo.expiry}</div>
+            </div>
+            <div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Dias restantes</div>
+              <div style={{ fontWeight: 600 }} className={licInfo.daysRemaining < 0 ? "neg" : licInfo.daysRemaining < 30 ? "gold" : "pos"}>
+                {licInfo.daysRemaining < 0 ? `${Math.abs(licInfo.daysRemaining)}d expirado` : `${licInfo.daysRemaining}d`}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {novoProdOpen && (
+        <Modal
+          title="Novo produto"
+          onClose={() => setNovoProdOpen(false)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setNovoProdOpen(false)}>Cancelar</button>
+              <button
+                className="btn btn-primary"
+                onClick={salvarNovoProd}
+                disabled={!novoProd.nome.trim() || !novoProd.tamanho.trim()}
+              >
+                Adicionar
+              </button>
+            </>
+          }
+        >
+          <div className="field">
+            <label>Nome do produto</label>
+            <input
+              placeholder="Ex: Marmita Vegana, Combo, Prato Executivo"
+              value={novoProd.nome}
+              onChange={(e) => setNovoProd((p) => ({ ...p, nome: e.target.value }))}
+            />
+          </div>
+          <div className="field">
+            <label>Tamanho / Identificador</label>
+            <input
+              placeholder="Ex: P, M, G, Vegana, Combo"
+              value={novoProd.tamanho}
+              onChange={(e) => setNovoProd((p) => ({ ...p, tamanho: e.target.value }))}
+            />
+          </div>
+          <div className="grid-2" style={{ gap: 12 }}>
+            <div className="field">
+              <label>Preço de venda (R$)</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={novoProd.preco}
+                onChange={(e) => setNovoProd((p) => ({ ...p, preco: e.target.value }))}
+              />
+            </div>
+            <div className="field">
+              <label>Custo unitário (R$)</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={novoProd.custo}
+                onChange={(e) => setNovoProd((p) => ({ ...p, custo: e.target.value }))}
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

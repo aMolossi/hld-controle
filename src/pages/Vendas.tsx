@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Produto, Venda, VendaExtra, VendaItem } from "../lib/types";
-import { BAIRROS, ORIGENS, PERIODICIDADES, TIPOS_CLIENTE, TIPOS_VENDA } from "../lib/types";
+import type { Cliente, Produto, Venda, VendaExtra, VendaItem } from "../lib/types";
+import { BAIRROS, FORMAS_PAGAMENTO, ORIGENS, PERIODICIDADES, TIPOS_CLIENTE, TIPOS_VENDA } from "../lib/types";
 import { exec, query } from "../lib/db";
 import { formatBRL, formatDateBR } from "../lib/format";
 import type { Period } from "../lib/dates";
@@ -8,8 +8,9 @@ import { monthRange, todayISO } from "../lib/dates";
 import PeriodFilter from "../components/PeriodFilter";
 import type { Preset } from "../components/PeriodFilter";
 import Modal from "../components/Modal";
-import { IconEdit, IconPlus, IconTrash } from "../components/icons";
+import { IconCart, IconEdit, IconPlus, IconTrash } from "../components/icons";
 import { useConfirm } from "../components/Confirm";
+import EmptyState from "../components/EmptyState";
 
 interface ItemInput {
   tamanho: string;
@@ -30,14 +31,18 @@ interface FormState {
   empresa: string;
   periodicidade: string;
   cliente_nome: string;
+  cliente_id: number | null;
   telefone: string;
   bairro: string;
   origem: string;
   tipo_cliente: string;
+  forma_pagamento: string;
   obs: string;
   itens: ItemInput[];
   extras: ExtraInput[];
 }
+
+type FiltroStatus = "todos" | "pagos" | "fiados";
 
 const parseValor = (s: string) => parseFloat(String(s).replace(",", ".")) || 0;
 const qNum = (s: string) => {
@@ -49,6 +54,9 @@ const defaultSize = (prods: Produto[]) =>
 const precoOf = (prods: Produto[], tam: string) =>
   prods.find((p) => p.tamanho === tam)?.preco ?? 0;
 
+const statusDePagamento = (forma: string) =>
+  forma === "Fiado" ? "pendente" : "pago";
+
 const emptyForm = (prods: Produto[]): FormState => {
   const tam = defaultSize(prods);
   return {
@@ -58,10 +66,12 @@ const emptyForm = (prods: Produto[]): FormState => {
     empresa: "",
     periodicidade: "Semanal",
     cliente_nome: "",
+    cliente_id: null,
     telefone: "",
     bairro: "",
     origem: "",
     tipo_cliente: "Novo",
+    forma_pagamento: "PIX",
     obs: "",
     itens: [{ tamanho: tam, quantidade: "1", preco: String(precoOf(prods, tam)) }],
     extras: [],
@@ -73,11 +83,13 @@ export default function Vendas() {
   const [preset, setPreset] = useState<Preset>("mes");
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm([]));
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("todos");
   const { ask, ConfirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
@@ -88,8 +100,12 @@ export default function Vendas() {
     setVendas(rows);
   }, [period]);
 
+  const loadClientes = () =>
+    query<Cliente>("SELECT * FROM clientes ORDER BY nome").then(setClientes);
+
   useEffect(() => {
-    query<Produto>("SELECT * FROM produtos WHERE ativo = 1 ORDER BY ordem").then(setProdutos);
+    query<Produto>("SELECT * FROM produtos WHERE ativo = 1 AND disponivel_hoje = 1 ORDER BY ordem").then(setProdutos);
+    loadClientes();
   }, []);
   useEffect(() => {
     load();
@@ -126,10 +142,12 @@ export default function Vendas() {
       empresa: v.empresa ?? "",
       periodicidade: v.periodicidade || "Semanal",
       cliente_nome: v.cliente_nome ?? "",
+      cliente_id: v.cliente_id ?? null,
       telefone: v.telefone ?? "",
       bairro: v.bairro ?? "",
       origem: v.origem ?? "",
       tipo_cliente: v.tipo_cliente ?? "Novo",
+      forma_pagamento: v.forma_pagamento ?? "PIX",
       obs: v.obs ?? "",
       itens: its.length
         ? its.map((i) => ({
@@ -145,6 +163,22 @@ export default function Vendas() {
       })),
     });
     setOpen(true);
+  };
+
+  const onClienteNome = (nome: string) => {
+    const match = clientes.find((c) => c.nome.toLowerCase() === nome.toLowerCase());
+    setForm((f) => ({
+      ...f,
+      cliente_nome: nome,
+      cliente_id: match ? match.id : null,
+      telefone: match?.telefone ? match.telefone : f.telefone,
+      bairro: match?.bairro ? match.bairro : f.bairro,
+    }));
+  };
+
+  const marcarPago = async (v: Venda) => {
+    await exec("UPDATE vendas SET status_pagamento='pago', forma_pagamento='PIX' WHERE id=?", [v.id]);
+    await load();
   };
 
   // ---- itens (marmitas) ----
@@ -223,27 +257,32 @@ export default function Vendas() {
     const empresa = form.tipo_venda === "Empresa" ? form.empresa.trim() : null;
     const periodicidade = form.tipo_venda === "Empresa" ? form.periodicidade : null;
     const legacyTam = itens[0].tamanho;
+    const statusPagamento = statusDePagamento(form.forma_pagamento);
 
     setBusy(true);
     try {
       let vendaId = form.id;
+      let clienteId = form.cliente_id;
+
       if (vendaId == null) {
         const res = await exec(
-          "INSERT INTO vendas (data,cliente_nome,telefone,bairro,origem,tipo_cliente,tipo_venda,empresa,periodicidade,tamanho,valor_marmita,valor_extras,total,qtd_marmitas,itens_resumo,obs) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO vendas (data,cliente_nome,cliente_id,telefone,bairro,origem,tipo_cliente,tipo_venda,empresa,periodicidade,tamanho,valor_marmita,valor_extras,total,qtd_marmitas,itens_resumo,obs,forma_pagamento,status_pagamento,hora_pedido) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%H:%M','now','localtime'))",
           [
-            form.data, form.cliente_nome, form.telefone, form.bairro, form.origem,
+            form.data, form.cliente_nome, clienteId, form.telefone, form.bairro, form.origem,
             form.tipo_cliente, form.tipo_venda, empresa, periodicidade, legacyTam,
             vMarmitas, vExtras, total, qtd, resumo, form.obs,
+            form.forma_pagamento, statusPagamento,
           ],
         );
         vendaId = res.lastInsertId as number;
       } else {
         await exec(
-          "UPDATE vendas SET data=?,cliente_nome=?,telefone=?,bairro=?,origem=?,tipo_cliente=?,tipo_venda=?,empresa=?,periodicidade=?,tamanho=?,valor_marmita=?,valor_extras=?,total=?,qtd_marmitas=?,itens_resumo=?,obs=? WHERE id=?",
+          "UPDATE vendas SET data=?,cliente_nome=?,cliente_id=?,telefone=?,bairro=?,origem=?,tipo_cliente=?,tipo_venda=?,empresa=?,periodicidade=?,tamanho=?,valor_marmita=?,valor_extras=?,total=?,qtd_marmitas=?,itens_resumo=?,obs=?,forma_pagamento=?,status_pagamento=? WHERE id=?",
           [
-            form.data, form.cliente_nome, form.telefone, form.bairro, form.origem,
+            form.data, form.cliente_nome, clienteId, form.telefone, form.bairro, form.origem,
             form.tipo_cliente, form.tipo_venda, empresa, periodicidade, legacyTam,
-            vMarmitas, vExtras, total, qtd, resumo, form.obs, vendaId,
+            vMarmitas, vExtras, total, qtd, resumo, form.obs,
+            form.forma_pagamento, statusPagamento, vendaId,
           ],
         );
         await exec("DELETE FROM venda_itens WHERE venda_id=?", [vendaId]);
@@ -263,6 +302,33 @@ export default function Vendas() {
       }
       setOpen(false);
       await load();
+
+      // Prompt para cadastrar novo cliente fixo
+      const nomeCliente = form.cliente_nome.trim();
+      if (nomeCliente && clienteId === null && form.tipo_venda !== "Empresa") {
+        const jaExiste = clientes.some(
+          (c) => c.nome.toLowerCase() === nomeCliente.toLowerCase(),
+        );
+        if (!jaExiste) {
+          const cadastrar = await ask(
+            `Deseja cadastrar "${nomeCliente}" como cliente fixo?`,
+          );
+          if (cadastrar) {
+            await exec(
+              "INSERT INTO clientes (nome,telefone,bairro,origem) VALUES (?,?,?,?)",
+              [nomeCliente, form.telefone || null, form.bairro || null, form.origem || null],
+            );
+            const rows = await query<{ id: number }>(
+              "SELECT id FROM clientes WHERE nome=? ORDER BY id DESC LIMIT 1",
+              [nomeCliente],
+            );
+            if (rows[0]) {
+              await exec("UPDATE vendas SET cliente_id=? WHERE id=?", [rows[0].id, vendaId]);
+            }
+            await loadClientes();
+          }
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -277,18 +343,26 @@ export default function Vendas() {
   };
 
   const filteredVendas = useMemo(() => {
-    if (!search.trim()) return vendas;
+    let list = vendas;
+    if (filtroStatus === "pagos") list = list.filter((v) => (v.status_pagamento ?? "pago") === "pago");
+    if (filtroStatus === "fiados") list = list.filter((v) => v.status_pagamento === "pendente");
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return vendas.filter(
+    return list.filter(
       (v) =>
         (v.cliente_nome ?? "").toLowerCase().includes(q) ||
         (v.empresa ?? "").toLowerCase().includes(q) ||
         (v.bairro ?? "").toLowerCase().includes(q) ||
         (v.origem ?? "").toLowerCase().includes(q),
     );
-  }, [vendas, search]);
+  }, [vendas, search, filtroStatus]);
 
-  const totalPeriodo = filteredVendas.reduce((s, v) => s + v.total, 0);
+  const totalRecebido = filteredVendas
+    .filter((v) => (v.status_pagamento ?? "pago") === "pago")
+    .reduce((s, v) => s + v.total, 0);
+  const totalPendente = filteredVendas
+    .filter((v) => v.status_pagamento === "pendente")
+    .reduce((s, v) => s + v.total, 0);
   const marmitasPeriodo = filteredVendas.reduce((s, v) => s + (v.qtd_marmitas || 0), 0);
   const isEmpresa = form.tipo_venda === "Empresa";
 
@@ -298,7 +372,6 @@ export default function Vendas() {
         <div>
           <div className="page-title">Vendas</div>
           <div className="page-sub">Pedidos avulsos e de empresas (contrato)</div>
-
         </div>
         <button className="btn btn-primary" onClick={openNew}>
           <IconPlus /> Nova venda
@@ -320,78 +393,126 @@ export default function Vendas() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <div className="btn-group">
+          {(["todos", "pagos", "fiados"] as FiltroStatus[]).map((f) => (
+            <button
+              key={f}
+              className={"btn btn-sm btn-ghost" + (filtroStatus === f ? " active" : "")}
+              onClick={() => setFiltroStatus(f)}
+            >
+              {f === "todos" ? "Todos" : f === "pagos" ? "Pagos" : "Fiados"}
+            </button>
+          ))}
+        </div>
         <div className="spacer" />
         <div className="muted">
-          {filteredVendas.length} pedido(s) &middot; {marmitasPeriodo} marmita(s) &middot;{" "}
-          <strong className="gold">{formatBRL(totalPeriodo)}</strong>
+          {filteredVendas.length} pedido(s) &middot; {marmitasPeriodo} marmita(s)
         </div>
       </div>
 
       {vendas.length === 0 ? (
-        <div className="card empty">
-          <strong>Nenhuma venda no período</strong>
-          Clique em "Nova venda" para lançar o primeiro pedido.
+        <div className="card">
+          <EmptyState
+            icon={<IconCart size={48} />}
+            title="Nenhum pedido no período"
+            body="Lance o primeiro pedido do dia. Cada venda alimenta o Dashboard, o cálculo de lucro e o histórico de clientes."
+            action={{ label: "Nova venda", onClick: openNew }}
+          />
         </div>
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Cliente / Empresa</th>
-                <th>Tipo</th>
-                <th>Itens</th>
-                <th>Origem</th>
-                <th className="t-right">Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredVendas.map((v) => (
-                <tr key={v.id}>
-                  <td className="nowrap">{formatDateBR(v.data)}</td>
-                  <td>
-                    {v.tipo_venda === "Empresa" ? (
-                      <>
-                        <strong>{v.empresa || "Empresa"}</strong>
-                        {v.periodicidade ? (
-                          <span className="muted"> &middot; {v.periodicidade}</span>
-                        ) : null}
-                      </>
-                    ) : (
-                      v.cliente_nome || <span className="muted">-</span>
-                    )}
-                  </td>
-                  <td>
-                    {v.tipo_venda === "Empresa" ? (
-                      <span className="pill pill-rec">Empresa</span>
-                    ) : (
-                      <span className="pill pill-var">Avulso</span>
-                    )}
-                  </td>
-                  <td>
-                    {v.itens_resumo || `${v.qtd_marmitas} marmita(s)`}
-                    {v.valor_extras > 0 ? <span className="muted"> + extras</span> : null}
-                  </td>
-                  <td>{v.origem || <span className="muted">-</span>}</td>
-                  <td className="t-right gold">
-                    <strong>{formatBRL(v.total)}</strong>
-                  </td>
-                  <td>
-                    <div className="t-actions">
-                      <button className="btn btn-icon btn-ghost" onClick={() => openEdit(v)} title="Editar">
-                        <IconEdit />
-                      </button>
-                      <button className="btn btn-icon btn-danger" onClick={() => remove(v)} title="Excluir">
-                        <IconTrash />
-                      </button>
-                    </div>
-                  </td>
+        <>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente / Empresa</th>
+                  <th>Tipo</th>
+                  <th>Itens</th>
+                  <th>Origem</th>
+                  <th>Pagamento</th>
+                  <th className="t-right">Total</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredVendas.map((v) => {
+                  const isPendente = v.status_pagamento === "pendente";
+                  return (
+                    <tr key={v.id} style={isPendente ? { background: "rgba(207,171,88,0.06)" } : undefined}>
+                      <td className="nowrap">{formatDateBR(v.data)}</td>
+                      <td>
+                        {v.tipo_venda === "Empresa" ? (
+                          <>
+                            <strong>{v.empresa || "Empresa"}</strong>
+                            {v.periodicidade ? (
+                              <span className="muted"> &middot; {v.periodicidade}</span>
+                            ) : null}
+                          </>
+                        ) : (
+                          v.cliente_nome || <span className="muted">-</span>
+                        )}
+                      </td>
+                      <td>
+                        {v.tipo_venda === "Empresa" ? (
+                          <span className="pill pill-rec">Empresa</span>
+                        ) : (
+                          <span className="pill pill-var">Avulso</span>
+                        )}
+                      </td>
+                      <td>
+                        {v.itens_resumo || `${v.qtd_marmitas} marmita(s)`}
+                        {v.valor_extras > 0 ? <span className="muted"> + extras</span> : null}
+                      </td>
+                      <td>{v.origem || <span className="muted">-</span>}</td>
+                      <td>
+                        {isPendente ? (
+                          <span className="pill pill-pendente">{v.forma_pagamento ?? "Fiado"}</span>
+                        ) : (
+                          <span className="pill pill-pago">{v.forma_pagamento ?? "PIX"}</span>
+                        )}
+                      </td>
+                      <td className="t-right gold">
+                        <strong>{formatBRL(v.total)}</strong>
+                      </td>
+                      <td>
+                        <div className="t-actions">
+                          {isPendente && (
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => marcarPago(v)}
+                              title="Marcar como pago"
+                              style={{ fontSize: 11 }}
+                            >
+                              ✓ Pago
+                            </button>
+                          )}
+                          <button className="btn btn-icon btn-ghost" onClick={() => openEdit(v)} title="Editar">
+                            <IconEdit />
+                          </button>
+                          <button className="btn btn-icon btn-danger" onClick={() => remove(v)} title="Excluir">
+                            <IconTrash />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-footer">
+            <span className="muted">
+              Recebido: <strong className="pos">{formatBRL(totalRecebido)}</strong>
+            </span>
+            {totalPendente > 0 && (
+              <span className="muted" style={{ marginLeft: 20 }}>
+                A receber (fiados): <strong style={{ color: "var(--gold)" }}>{formatBRL(totalPendente)}</strong>
+              </span>
+            )}
+          </div>
+        </>
       )}
 
       {ConfirmDialog}
@@ -441,7 +562,36 @@ export default function Vendas() {
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label>Forma de pagamento</label>
+              <select
+                value={form.forma_pagamento}
+                onChange={(e) => setForm({ ...form, forma_pagamento: e.target.value })}
+              >
+                {FORMAS_PAGAMENTO.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {form.forma_pagamento === "Fiado" && (
+            <div
+              style={{
+                background: "rgba(207,171,88,0.1)",
+                border: "1px solid rgba(207,171,88,0.3)",
+                borderRadius: "var(--radius-sm)",
+                padding: "8px 12px",
+                fontSize: 13,
+                color: "var(--gold)",
+                marginTop: 10,
+              }}
+            >
+              Fiado — venda ficará como <strong>pendente</strong> até ser marcada como paga.
+            </div>
+          )}
 
           {isEmpresa && (
             <div className="form-grid" style={{ marginTop: 14 }}>
@@ -477,12 +627,23 @@ export default function Vendas() {
 
           <div className="form-grid" style={{ marginTop: 14 }}>
             <div className="field">
-              <label>{isEmpresa ? "Contato (opcional)" : "Cliente (opcional)"}</label>
+              <label>{isEmpresa ? "Contato (opcional)" : "Cliente"}</label>
               <input
+                list="clientes-datalist"
                 value={form.cliente_nome}
-                onChange={(e) => setForm({ ...form, cliente_nome: e.target.value })}
-                placeholder="Nome"
+                onChange={(e) => onClienteNome(e.target.value)}
+                placeholder={isEmpresa ? "Nome do contato" : "Nome do cliente"}
               />
+              <datalist id="clientes-datalist">
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.nome} />
+                ))}
+              </datalist>
+              {form.cliente_id !== null && (
+                <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2 }}>
+                  ✓ Cliente cadastrado
+                </div>
+              )}
             </div>
             <div className="field">
               <label>Telefone (opcional)</label>

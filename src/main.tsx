@@ -7,16 +7,30 @@ import Vendas from "./pages/Vendas";
 import Despesas from "./pages/Despesas";
 import Precificacao from "./pages/Precificacao";
 import Config from "./pages/Config";
+import Onboarding from "./pages/Onboarding";
+import Activate from "./pages/Activate";
+import Hoje from "./pages/Hoje";
+import Clientes from "./pages/Clientes";
 import "./theme.css";
 
 const router = createHashRouter([
+  {
+    path: "/activate",
+    element: <Activate />,
+  },
+  {
+    path: "/onboarding",
+    element: <Onboarding />,
+  },
   {
     path: "/",
     element: <App />,
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", element: <Dashboard /> },
+      { path: "hoje", element: <Hoje /> },
       { path: "vendas", element: <Vendas /> },
+      { path: "clientes", element: <Clientes /> },
       { path: "despesas", element: <Despesas /> },
       { path: "precificacao", element: <Precificacao /> },
       { path: "config", element: <Config /> },

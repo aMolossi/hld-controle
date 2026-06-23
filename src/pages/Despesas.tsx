@@ -7,8 +7,9 @@ import { monthRange, todayISO } from "../lib/dates";
 import PeriodFilter from "../components/PeriodFilter";
 import type { Preset } from "../components/PeriodFilter";
 import Modal from "../components/Modal";
-import { IconEdit, IconPlus, IconTrash } from "../components/icons";
+import { IconEdit, IconPlus, IconTrash, IconWallet } from "../components/icons";
 import { useConfirm } from "../components/Confirm";
+import EmptyState from "../components/EmptyState";
 
 interface FormState {
   id: number | null;
@@ -164,9 +165,13 @@ export default function Despesas() {
       </div>
 
       {despesas.length === 0 ? (
-        <div className="card empty">
-          <strong>Nenhuma despesa no período</strong>
-          Lance custos, taxas, salários, energia, marketing, perdas etc.
+        <div className="card">
+          <EmptyState
+            icon={<IconWallet size={48} />}
+            title="Nenhuma despesa no período"
+            body="Lance custos fixos (aluguel, salários) e variáveis (ingredientes, embalagens) para calcular o lucro real do negócio."
+            action={{ label: "Nova despesa", onClick: openNew }}
+          />
         </div>
       ) : (
         <div className="table-wrap">

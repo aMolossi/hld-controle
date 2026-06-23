@@ -85,3 +85,17 @@ export const IconPricing = ({ size = 19 }: P) => (
     <polyline points="17 6 23 6 23 12" />
   </svg>
 );
+
+export const IconCalendar = ({ size = 19 }: P) => (
+  <svg {...base(size)}>
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <path d="M16 2v4M8 2v4M3 10h18" />
+    <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
+  </svg>
+);
+
+export const IconCheck = ({ size = 15 }: P) => (
+  <svg {...base(size)}>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);

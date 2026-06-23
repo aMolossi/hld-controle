@@ -43,6 +43,7 @@ App desktop Windows para controle de vendas, despesas e lucro da **HLD Marmitari
 | 0.1.0 | — | MVP inicial (Dashboard, Vendas simples, Despesas) |
 | 0.2.0 | — | Vendas multi-item, tipo Empresa, extras com quantidade |
 | 0.3.0 | 2026-06-23 | Ícone HC, renomeado para HubControl, calculadora de precificação, limpeza de arquivos starter |
+| 0.4.0 | 2026-06-23 | Onboarding wizard, rastreamento de pagamento (PIX/Fiado), cadastro de clientes, tela Hoje (operação do dia), alertas inteligentes no Dashboard |
 
 ---
 
@@ -60,24 +61,28 @@ App Controle/
 │   ├── App.tsx                       # layout principal: sidebar + outlet
 │   ├── theme.css                     # design system completo (tokens, componentes)
 │   ├── components/
-│   │   ├── icons.tsx                 # SVG: Dashboard, Cart, Wallet, Pricing, Gear
+│   │   ├── icons.tsx                 # SVG: Dashboard, Cart, Wallet, Pricing, Gear, Calendar, Check, Users
+│   │   ├── AlertaBanner.tsx          # banners dismissíveis de alertas do Dashboard (v0.4.0)
 │   │   ├── KpiCard.tsx
 │   │   ├── Modal.tsx
 │   │   └── PeriodFilter.tsx
 │   ├── lib/
 │   │   ├── db.ts                     # singleton SQLite (getDb / query / exec)
-│   │   ├── types.ts                  # interfaces + constantes (ORIGENS, BAIRROS, etc.)
-│   │   ├── calc.ts                   # funções de cálculo de lucro
-│   │   ├── format.ts                 # formatBRL, formatPct
+│   │   ├── types.ts                  # interfaces + constantes; v0.4.0 adicionou Cliente, FORMAS_PAGAMENTO, campos em Venda
+│   │   ├── calc.ts                   # funções de cálculo; v0.4.0 adicionou getReceber, getAlertas, getClientesResumo
+│   │   ├── format.ts                 # formatBRL, formatPct, formatDateBR
 │   │   ├── dates.ts                  # utilitários de data
 │   │   ├── backup.ts                 # backup automático via VACUUM INTO
 │   │   └── update.ts                 # checa e instala atualização (tauri-plugin-updater)
 │   └── pages/
-│       ├── Dashboard.tsx             # KPIs + gráfico de faturamento/lucro
-│       ├── Vendas.tsx                # CRUD de vendas (Avulso + Empresa, multi-item)
+│       ├── Dashboard.tsx             # KPIs + gráficos + AlertaBanner + KPI "A receber"
+│       ├── Onboarding.tsx            # wizard 3 etapas; rota /onboarding fora do App shell (v0.4.0)
+│       ├── Hoje.tsx                  # tela /hoje: pedidos do dia, status entrega, resumo produção (v0.4.0)
+│       ├── Clientes.tsx              # CRM leve: tabela, histórico, CRUD, exportar CSV (v0.4.0)
+│       ├── Vendas.tsx                # CRUD de vendas; v0.4.0 adicionou pagamento, entrega, cliente_id
 │       ├── Despesas.tsx              # CRUD de despesas (fixo/variável)
 │       ├── Precificacao.tsx          # calculadora de precificação (v0.3.0)
-│       └── Config.tsx                # configurações, backup manual, restauração
+│       └── Config.tsx                # configurações, backup, alertas, restauração
 └── src-tauri/
     ├── tauri.conf.json               # productName, version, identifier, updater
     ├── Cargo.toml                    # crate interno (hld-controle)
@@ -85,9 +90,12 @@ App Controle/
     │   └── source.png                # fonte 1024×1024 para gerar todos os ícones
     ├── migrations/
     │   ├── 001_init.sql              # schema v1: produtos, vendas, despesas, config
-    │   └── 002_multi_itens.sql       # schema v2: venda_itens, extras com qtd, tipo_venda
+    │   ├── 002_multi_itens.sql       # schema v2: venda_itens, extras com qtd, tipo_venda
+    │   ├── 003_pagamento.sql         # schema v3 (v0.4.0): forma_pagamento, status_pagamento
+    │   ├── 004_entrega.sql           # schema v4 (v0.4.0): status_entrega, hora_pedido
+    │   └── 005_clientes.sql          # schema v5 (v0.4.0): tabela clientes, cliente_id em vendas
     └── src/
-        └── lib.rs                    # comandos Rust: backup, restore, list_backups, prune
+        └── lib.rs                    # comandos Rust: backup, restore, list_backups, prune; migrations v1–v5
 ```
 
 ---
@@ -108,13 +116,17 @@ App Controle/
 | `despesas` | Saídas financeiras: categoria, valor, tipo (fixo/variável), recorrente |
 | `despesa_categorias` | Dropdown gerenciável de categorias |
 | `leads` | Schema pronto, sem UI no MVP |
-| `config` | Chave/valor: `margem_meta`, `marca_nome` |
+| `clientes` | CRM leve: nome, telefone, bairro, origem, obs, criado_em (v0.4.0) |
+| `config` | Chave/valor: `margem_meta`, `marca_nome`, `setup_complete`, `alerta_*` |
 
 ### Migrações (Rust `lib.rs`)
 
 As migrações são embutidas em tempo de compilação via `include_str!()` e executadas pelo `tauri-plugin-sql` na abertura do banco:
 - `v1` — schema inicial + seeds (3 produtos padrão, 15 categorias de despesa)
 - `v2` — suporte a multi-item, quantidades em extras, tipo Empresa, `qtd_marmitas`, `itens_resumo`
+- `v3` — `forma_pagamento` e `status_pagamento` em `vendas` (Fase 1.1)
+- `v4` — `status_entrega` e `hora_pedido` em `vendas` (Fase 1.3)
+- `v5` — tabela `clientes` e `cliente_id` em `vendas` (Fase 1.2)
 
 ### Restauração de backup
 

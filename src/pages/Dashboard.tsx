@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -18,6 +19,8 @@ import { eachDay, monthRange, shortDayLabel } from "../lib/dates";
 import { formatBRL, formatNum, formatPct } from "../lib/format";
 import {
   getResumo,
+  getReceber,
+  getAlertas,
   faturamentoPorDia,
   vendasPorTamanho,
   vendasPorOrigem,
@@ -29,11 +32,15 @@ import type {
   TamanhoPonto,
   OrigemPonto,
   CategoriaPonto,
+  Alerta,
 } from "../lib/calc";
+import AlertaBanner from "../components/AlertaBanner";
+import { exec, query } from "../lib/db";
 import KpiCard from "../components/KpiCard";
 import PeriodFilter from "../components/PeriodFilter";
 import type { Preset } from "../components/PeriodFilter";
-import { IconCart, IconMoney, IconUsers, IconWallet } from "../components/icons";
+import { IconCart, IconMoney, IconPricing, IconUsers, IconWallet } from "../components/icons";
+import EmptyState from "../components/EmptyState";
 
 const GOLD = "#cfab58";
 const PALETTE = [
@@ -49,25 +56,51 @@ const tooltipStyle = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>(monthRange());
   const [preset, setPreset] = useState<Preset>("mes");
   const [resumo, setResumo] = useState<Resumo | null>(null);
+  const [receber, setReceber] = useState<number>(0);
   const [serieRaw, setSerieRaw] = useState<DiaPonto[]>([]);
   const [tam, setTam] = useState<TamanhoPonto[]>([]);
   const [origem, setOrigem] = useState<OrigemPonto[]>([]);
   const [despCat, setDespCat] = useState<CategoriaPonto[]>([]);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [dismissedHoje, setDismissedHoje] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    // Carrega quais alertas foram dispensados hoje
+    query<{ chave: string; valor: string }>(
+      "SELECT chave, valor FROM config WHERE chave LIKE 'alerta_%_dispensado'",
+    ).then((rows) => {
+      const dis = new Set<string>();
+      for (const r of rows) {
+        if (r.valor === today) {
+          const tipo = r.chave.replace("alerta_", "").replace("_dispensado", "");
+          dis.add(tipo);
+        }
+      }
+      setDismissedHoje(dis);
+    });
+
+    // Alertas não dependem do período selecionado
+    getAlertas().then(setAlertas);
+  }, []);
 
   useEffect(() => {
     let alive = true;
     Promise.all([
       getResumo(period),
+      getReceber(period),
       faturamentoPorDia(period),
       vendasPorTamanho(period),
       vendasPorOrigem(period),
       despesasPorCategoria(period),
-    ]).then(([r, s, t, o, d]) => {
+    ]).then(([r, rec, s, t, o, d]) => {
       if (!alive) return;
       setResumo(r);
+      setReceber(rec as number);
       setSerieRaw(s);
       setTam(t);
       setOrigem(o);
@@ -77,6 +110,17 @@ export default function Dashboard() {
       alive = false;
     };
   }, [period]);
+
+  const dispensar = async (tipo: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    await exec(
+      "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
+      [`alerta_${tipo}_dispensado`, today],
+    );
+    setDismissedHoje((prev) => new Set([...prev, tipo]));
+  };
+
+  const alertasVisiveis = alertas.filter((a) => !dismissedHoje.has(a.tipo));
 
   const serie = useMemo(() => {
     const dias = eachDay(period);
@@ -111,6 +155,8 @@ export default function Dashboard() {
           }}
         />
       </div>
+
+      <AlertaBanner alertas={alertasVisiveis} onDismiss={dispensar} />
 
       {resumo === null ? (
         <div className="kpi-grid">
@@ -166,7 +212,28 @@ export default function Dashboard() {
           sub={`${formatNum(r?.novos ?? 0)} novos / ${formatNum(r?.recorrentes ?? 0)} recorrentes`}
           icon={<IconUsers />}
         />
+        {receber > 0 && (
+          <KpiCard
+            variant="bad"
+            label="A receber (fiados)"
+            value={formatBRL(receber)}
+            valueClass="neg"
+            sub="Vendas pendentes de pagamento"
+            icon={<IconWallet />}
+          />
+        )}
       </div>
+
+      {r !== null && r.pedidos === 0 && (
+        <div className="card section-gap">
+          <EmptyState
+            icon={<IconPricing size={48} />}
+            title="Sem vendas no período selecionado"
+            body="Comece lançando as vendas de hoje. Cada pedido alimenta o faturamento, o cálculo de lucro e os gráficos do Dashboard."
+            action={{ label: "Ir para Vendas", onClick: () => navigate("/vendas") }}
+          />
+        </div>
+      )}
 
       <div className="card chart-card section-gap">
         <div className="card-head">
@@ -217,7 +284,11 @@ export default function Dashboard() {
             <span className="card-title">Pedidos por tamanho</span>
           </div>
           {tamData.length === 0 ? (
-            <div className="empty">Sem vendas no periodo</div>
+            <EmptyState
+              icon={<IconCart size={36} />}
+              title="Sem dados"
+              body="Adicione vendas para ver a distribuição por tamanho."
+            />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={tamData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -244,7 +315,11 @@ export default function Dashboard() {
             <span className="card-title">Origem dos clientes</span>
           </div>
           {origem.length === 0 ? (
-            <div className="empty">Sem vendas no periodo</div>
+            <EmptyState
+              icon={<IconUsers size={36} />}
+              title="Sem dados de origem"
+              body="Preencha o campo 'Origem' ao registrar vendas para ver este gráfico."
+            />
           ) : (
             <>
               <ResponsiveContainer width="100%" height={208}>
