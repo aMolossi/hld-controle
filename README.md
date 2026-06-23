@@ -53,6 +53,34 @@ vem no Windows 10/11).
 
 ---
 
+## Publicar uma atualização (a marmitaria recebe sozinha)
+
+Depois de corrigir o código aqui, rode **um comando**:
+
+```bash
+npm run release -- -Version 0.3.0 -Notes "O que mudou nesta versão"
+```
+
+Isso sobe a versão, compila o instalador **assinado**, gera o `latest.json` e publica em
+**GitHub Releases** (`github.com/aMolossi/hld-controle`). O app instalado na marmitaria
+verifica ao abrir e **se atualiza sozinho**.
+
+- **Chave de assinatura**: `%USERPROFILE%\.tauri\hld_updater.key` (+ `.pass`). **Guarde com
+  cuidado** — sem ela não é possível assinar novas atualizações. Não vai para o git.
+- **Primeira vez**: instale a v0.2.0 manualmente na marmitaria (ela já traz o auto-update);
+  da próxima em diante é automático.
+- Verificação/instalação manual também em **Configurações → Atualizações**.
+
+## Backup de dados
+
+- **Automático**: a cada abertura do app, uma cópia datada é salva em
+  `%APPDATA%\com.hld.controle\backups\` (mantém as 15 mais recentes).
+- **Exportar / Restaurar**: em **Configurações → Backup**. Aponte o export para uma pasta do
+  Google Drive/OneDrive e tenha cópia **fora do PC**. A restauração troca o banco e reinicia
+  o app.
+
+---
+
 ## Onde ficam os dados
 
 Banco SQLite único, criado na primeira execução em:
